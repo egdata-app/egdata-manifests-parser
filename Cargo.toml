@@ -1,10 +1,10 @@
 [package]
 name = "egdata-manifests-parser"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A parser for Epic Games manifest files"
 license = "MIT"
-repository = "https://github.com/yourusername/egdata-manifests-parser"
+repository = "https://github.com/nachoaldamav/egdata-manifests-parser"
 readme = "README.md"
 keywords = ["epic", "games", "manifest", "parser"]
 categories = ["parsing", "game-development"]
@@ -12,13 +12,11 @@ categories = ["parsing", "game-development"]
 [dependencies]
 byteorder = "1.5.0"
 hex = "0.4.3"
-log = "0.4.27"
 miniz_oxide = "0.7.4"
-reqwest = { version = "0.11.27", features = ["json"] }
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
 sha1 = "0.10.6"
 tokio = { version = "1.44.2", features = ["full"] }
+serde = { version = "1.0.219", features = ["derive"] }
 uuid = { version = "1.4", features = ["v4"] }
 thiserror = "1.0"
-env_logger = "0.10"
+log = "0.4.27"
+serde_json = "1.0.140"
