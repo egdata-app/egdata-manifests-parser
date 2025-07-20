@@ -1,6 +1,6 @@
 {
     "name": "@egdata/manifests-parser",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "description": "A Node.js native addon for parsing Epic Games manifest files",
     "main": "index.js",
     "types": "index.d.ts",
