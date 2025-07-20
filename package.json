@@ -41,10 +41,7 @@
     ],
     "author": "nachoaldamav",
     "license": "MIT",
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/nachoaldamav/egdata-manifests-parser"
-    },
+    "repository": "https://github.com/egdata-app/egdata-manifests-parser",
     "engines": {
         "node": ">= 14"
     },

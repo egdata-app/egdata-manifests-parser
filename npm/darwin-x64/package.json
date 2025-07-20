@@ -1,6 +1,6 @@
 {
   "name": "@egdata/manifests-parser-darwin-x64",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "cpu": [
     "x64"
   ],
@@ -23,10 +23,7 @@
   "engines": {
     "node": ">= 14"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/nachoaldamav/egdata-manifests-parser"
-  },
+  "repository": "https://github.com/egdata-app/egdata-manifests-parser",
   "os": [
     "darwin"
   ]
