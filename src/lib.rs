@@ -26,28 +26,29 @@ use std::{
     path::Path,
 };
 
-use error::Error;
+use error::ManifestError;
 
 use hex;
 use log::{debug, error, info, warn};
 use miniz_oxide::inflate::decompress_to_vec_zlib;
+use napi_derive::napi;
 use sha1::{Digest, Sha1};
 use tokio::fs as tokio_fs;
 
 /// Read → verify → parse
-pub fn load(path: impl AsRef<Path>) -> Result<Manifest, Error> {
+pub fn load(path: impl AsRef<Path>) -> Result<Manifest, ManifestError> {
     let buf = fs::read(&path)?;
     process_manifest_data(buf)
 }
 
 /// Async version of load
-pub async fn load_async(path: impl AsRef<Path>) -> Result<Manifest, Error> {
+pub async fn load_async(path: impl AsRef<Path>) -> Result<Manifest, ManifestError> {
     let buf = tokio_fs::read(&path).await?;
     process_manifest_data(buf)
 }
 
 /// Process manifest data from a buffer
-fn process_manifest_data(buf: Vec<u8>) -> Result<Manifest, Error> {
+fn process_manifest_data(buf: Vec<u8>) -> Result<Manifest, ManifestError> {
     let mut rdr = Cursor::new(&buf);
     let header = ManifestHeader::read(&mut rdr)?;
 
@@ -61,13 +62,13 @@ fn process_manifest_data(buf: Vec<u8>) -> Result<Manifest, Error> {
         };
         let end = start + size as usize;
         if start >= buf.len() || end > buf.len() {
-            return Err(Error::Invalid("payload out of bounds".to_string()));
+            return Err(ManifestError::Invalid("payload out of bounds".to_string()));
         }
         &buf[start..end]
     };
 
     if header.is_encrypted() {
-        return Err(Error::EncryptedManifest);
+        return Err(ManifestError::EncryptedManifest);
     }
 
     let payload = if header.is_compressed() {
@@ -99,7 +100,7 @@ fn process_manifest_data(buf: Vec<u8>) -> Result<Manifest, Error> {
         if offset < payload_compressed.len() - 2 {
             debug!("  Decompressing from offset {}", offset);
             decompress_to_vec_zlib(&payload_compressed[offset..])
-                .map_err(|e| Error::Inflate(format!("decompression failed: {}", e)))?
+                .map_err(|e| ManifestError::Inflate(format!("decompression failed: {}", e)))?
         } else {
             debug!("  No zlib header found in compressed data");
             payload_compressed.to_vec()
@@ -119,8 +120,16 @@ fn process_manifest_data(buf: Vec<u8>) -> Result<Manifest, Error> {
                 "  Compressed data starts with: {:02x?}",
                 &compressed_data[..std::cmp::min(16, compressed_data.len())]
             );
-            decompress_to_vec_zlib(compressed_data)
-                .map_err(|e| Error::Inflate(format!("decompression failed: {}", e)))?
+            // FIX: Use explicit match instead of ?
+            match decompress_to_vec_zlib(compressed_data) {
+                Ok(data) => data,
+                Err(e) => {
+                    return Err(ManifestError::Inflate(format!(
+                        "decompression failed: {}",
+                        e
+                    )))
+                }
+            }
         } else {
             debug!("  No zlib header found, treating as uncompressed");
             payload_compressed.to_vec()
@@ -206,6 +215,30 @@ fn process_manifest_data(buf: Vec<u8>) -> Result<Manifest, Error> {
         chunk_list: Some(chunk_list),
         file_list: Some(file_list),
     })
+}
+
+// NAPI-RS exports
+use napi::{bindgen_prelude::Buffer, Result as NapiResult};
+
+/// Parse an Epic Games manifest file synchronously
+#[napi]
+pub fn parse_manifest_sync(path: String) -> NapiResult<Manifest> {
+    load(path).map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
+/// Parse an Epic Games manifest file asynchronously
+#[napi]
+pub async fn parse_manifest_async(path: String) -> NapiResult<Manifest> {
+    load_async(path)
+        .await
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
+/// Parse manifest data from a buffer
+#[napi]
+pub fn parse_manifest_buffer(buffer: Buffer) -> NapiResult<Manifest> {
+    let data: Vec<u8> = buffer.to_vec();
+    process_manifest_data(data).map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
 #[cfg(test)]

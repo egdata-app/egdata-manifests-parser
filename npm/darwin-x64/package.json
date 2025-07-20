@@ -1,0 +1,33 @@
+{
+  "name": "@egdata/manifests-parser-darwin-x64",
+  "version": "0.1.1",
+  "cpu": [
+    "x64"
+  ],
+  "main": "egdata-manifests-parser.darwin-x64.node",
+  "files": [
+    "egdata-manifests-parser.darwin-x64.node"
+  ],
+  "description": "A Node.js native addon for parsing Epic Games manifest files",
+  "keywords": [
+    "epic",
+    "games",
+    "manifest",
+    "parser",
+    "napi-rs",
+    "node-addon",
+    "native"
+  ],
+  "author": "nachoaldamav",
+  "license": "MIT",
+  "engines": {
+    "node": ">= 14"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nachoaldamav/egdata-manifests-parser"
+  },
+  "os": [
+    "darwin"
+  ]
+}

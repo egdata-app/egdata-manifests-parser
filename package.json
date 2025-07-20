@@ -1,0 +1,58 @@
+{
+    "name": "@egdata/manifests-parser",
+    "version": "0.1.1",
+    "description": "A Node.js native addon for parsing Epic Games manifest files",
+    "main": "index.js",
+    "types": "types.d.ts",
+    "napi": {
+        "binaryName": "egdata-manifests-parser",
+        "targets": [
+            "x86_64-pc-windows-msvc",
+            "i686-pc-windows-msvc",
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "x86_64-unknown-linux-gnu",
+            "x86_64-unknown-linux-musl",
+            "aarch64-unknown-linux-gnu",
+            "aarch64-unknown-linux-musl",
+            "aarch64-pc-windows-msvc"
+        ]
+    },
+    "scripts": {
+        "artifacts": "napi artifacts",
+        "build": "napi build --platform --release",
+        "build:debug": "napi build --platform",
+        "prepublishOnly": "napi prepublish -t npm",
+        "universal": "napi universal",
+        "version": "napi version",
+        "test": "vitest",
+        "test:run": "vitest run",
+        "test:watch": "vitest --watch",
+        "test:coverage": "vitest run --coverage"
+    },
+    "keywords": [
+        "epic",
+        "games",
+        "manifest",
+        "parser",
+        "napi-rs",
+        "node-addon",
+        "native"
+    ],
+    "author": "nachoaldamav",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/nachoaldamav/egdata-manifests-parser"
+    },
+    "engines": {
+        "node": ">= 14"
+    },
+    "devDependencies": {
+        "@napi-rs/cli": "^3.0.0",
+        "@types/node": "^20.0.0",
+        "@vitest/coverage-v8": "^1.6.0",
+        "typescript": "^5.0.0",
+        "vitest": "^1.6.0"
+    }
+}

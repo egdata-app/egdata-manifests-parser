@@ -3,12 +3,14 @@ use hex;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek, SeekFrom};
+use napi_derive::napi;
 
-use crate::error::Error;
+use crate::error::ManifestError;
 use crate::parser::reader::ReadExt;
 use crate::types::chunk::{ChunkDataList, ChunkPart};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[napi(object)]
 pub struct FileManifest {
     #[serde(serialize_with = "trim_null_chars")]
     pub filename: String,
@@ -24,6 +26,7 @@ pub struct FileManifest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[napi(object)]
 pub struct FileManifestList {
     pub data_size: u32,
     pub data_version: u8,
@@ -74,7 +77,7 @@ impl FileManifest {
 }
 
 impl FileManifestList {
-    pub fn read<R: Read + Seek>(rdr: &mut R, chunk_list: &ChunkDataList) -> Result<Self, Error> {
+    pub fn read<R: Read + Seek>(rdr: &mut R, chunk_list: &ChunkDataList) -> Result<Self, ManifestError> {
         let start_pos = rdr.stream_position()?;
         debug!(
             "\nReading file list at position: {} (0x{:x})",
@@ -88,7 +91,7 @@ impl FileManifestList {
         // Validate data size
         if data_size == 0 || data_size > 1024 * 1024 * 1024 {
             // 1GB max
-            return Err(Error::Invalid(format!(
+            return Err(ManifestError::Invalid(format!(
                 "Invalid data size: {} (0x{:x}). Must be between 1 and 1GB",
                 data_size, data_size
             )));
@@ -100,7 +103,7 @@ impl FileManifestList {
 
         // Validate data version
         if data_version > 2 {
-            return Err(Error::Invalid(format!(
+            return Err(ManifestError::Invalid(format!(
                 "Invalid data version: {} (0x{:x}). Must be 0, 1, or 2",
                 data_version, data_version
             )));
@@ -113,7 +116,7 @@ impl FileManifestList {
         // Validate count
         if count > 1_000_000 {
             // Reasonable max file count
-            return Err(Error::Invalid(format!(
+            return Err(ManifestError::Invalid(format!(
                 "Invalid count: {} (0x{:x}). Must be less than 1,000,000",
                 count, count
             )));

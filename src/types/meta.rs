@@ -2,11 +2,13 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek};
+use napi_derive::napi;
 
-use crate::error::Error;
+use crate::error::ManifestError;
 use crate::parser::reader::ReadExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[napi(object)]
 pub struct ManifestMeta {
     pub data_size: u32,
     pub data_version: u8,
@@ -40,7 +42,7 @@ where
 }
 
 impl ManifestMeta {
-    pub fn read_meta<R: Read + Seek>(rdr: &mut R) -> Result<(Self, u64), Error> {
+    pub fn read_meta<R: Read + Seek>(rdr: &mut R) -> Result<(Self, u64), ManifestError> {
         let start_pos = rdr.stream_position()?;
 
         debug!("Reading metadata:");
@@ -50,7 +52,7 @@ impl ManifestMeta {
         // Validate data size
         if data_size == 0 || data_size > 1024 * 1024 * 1024 {
             // 1GB max
-            return Err(Error::Invalid(format!(
+            return Err(ManifestError::Invalid(format!(
                 "Invalid data size: {} (0x{:x}). Must be between 1 and 1GB",
                 data_size, data_size
             )));

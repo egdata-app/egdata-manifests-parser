@@ -2,9 +2,11 @@ use crate::types::{
     chunk::ChunkDataList, file::FileManifestList, header::ManifestHeader, meta::ManifestMeta,
 };
 use serde::{Deserialize, Serialize};
+use napi_derive::napi;
 
 /// Whole manifest, JSON-serialisable.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[napi(object)]
 pub struct Manifest {
     pub header: ManifestHeader,
     pub meta: Option<ManifestMeta>,

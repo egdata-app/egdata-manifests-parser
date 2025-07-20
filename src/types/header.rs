@@ -2,13 +2,15 @@ use hex;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek};
+use napi_derive::napi;
 
 use crate::parser::reader::ReadExt;
-use crate::{error::Error, types::flags::*};
+use crate::{error::ManifestError, types::flags::*};
 
 const MANIFEST_MAGIC: u32 = 0x44BEC00C;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[napi(object)]
 pub struct ManifestHeader {
     pub header_size: i32,
     pub data_size_uncompressed: i32,
@@ -22,11 +24,11 @@ pub struct ManifestHeader {
 }
 
 impl ManifestHeader {
-    pub fn read<R: Read + Seek>(mut rdr: R) -> Result<Self, Error> {
+    pub fn read<R: Read + Seek>(mut rdr: R) -> Result<Self, ManifestError> {
         // Read and verify magic number
         let magic = rdr.u32()?;
         if magic != MANIFEST_MAGIC {
-            return Err(Error::Invalid("invalid manifest magic number".to_string()));
+            return Err(ManifestError::Invalid("invalid manifest magic number".to_string()));
         }
 
         // Read header size
