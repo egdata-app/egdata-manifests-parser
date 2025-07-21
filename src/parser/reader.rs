@@ -1,45 +1,115 @@
 //! Tiny helpers for LE primitives and UE-style FStrings.
 
-use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
+use byteorder::{ByteOrder, LittleEndian};
 use std::io::{self, Read, Seek, SeekFrom};
 use uuid::Uuid;
 
 /// Extension methods, implemented for every `Read`.
 pub trait ReadExt: Read + Seek {
   fn i32(&mut self) -> io::Result<i32> {
-    self.read_i32::<LittleEndian>()
+    let bytes = self.read_bytes_tolerant(4)?;
+    if bytes.len() < 4 {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("Expected 4 bytes for i32 but got {} bytes", bytes.len()),
+      ));
+    }
+    Ok(LittleEndian::read_i32(&bytes))
   }
   fn u8(&mut self) -> io::Result<u8> {
-    self.read_u8()
+    let bytes = self.read_bytes_tolerant(1)?;
+    if bytes.is_empty() {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        "Expected 1 byte for u8 but got 0 bytes",
+      ));
+    }
+    Ok(bytes[0])
   }
   fn u32(&mut self) -> io::Result<u32> {
-    self.read_u32::<LittleEndian>()
+    let bytes = self.read_bytes_tolerant(4)?;
+    if bytes.len() < 4 {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("Expected 4 bytes for u32 but got {} bytes", bytes.len()),
+      ));
+    }
+    Ok(LittleEndian::read_u32(&bytes))
   }
   fn i64(&mut self) -> io::Result<i64> {
-    self.read_i64::<LittleEndian>()
+    let bytes = self.read_bytes_tolerant(8)?;
+    if bytes.len() < 8 {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("Expected 8 bytes for i64 but got {} bytes", bytes.len()),
+      ));
+    }
+    Ok(LittleEndian::read_i64(&bytes))
   }
   fn u64(&mut self) -> io::Result<u64> {
-    self.read_u64::<LittleEndian>()
+    let bytes = self.read_bytes_tolerant(8)?;
+    if bytes.len() < 8 {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("Expected 8 bytes for u64 but got {} bytes", bytes.len()),
+      ));
+    }
+    Ok(LittleEndian::read_u64(&bytes))
   }
 
   // Additional primitive type readers
   fn i8(&mut self) -> io::Result<i8> {
-    self.read_i8()
+    let bytes = self.read_bytes_tolerant(1)?;
+    if bytes.is_empty() {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        "Expected 1 byte for i8 but got 0 bytes",
+      ));
+    }
+    Ok(bytes[0] as i8)
   }
   fn i16(&mut self) -> io::Result<i16> {
-    self.read_i16::<LittleEndian>()
+    let bytes = self.read_bytes_tolerant(2)?;
+    if bytes.len() < 2 {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("Expected 2 bytes for i16 but got {} bytes", bytes.len()),
+      ));
+    }
+    Ok(LittleEndian::read_i16(&bytes))
   }
   fn u16(&mut self) -> io::Result<u16> {
-    self.read_u16::<LittleEndian>()
+    let bytes = self.read_bytes_tolerant(2)?;
+    if bytes.len() < 2 {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("Expected 2 bytes for u16 but got {} bytes", bytes.len()),
+      ));
+    }
+    Ok(LittleEndian::read_u16(&bytes))
   }
   fn bool(&mut self) -> io::Result<bool> {
-    self.read_u8().map(|b| b != 0)
+    self.u8().map(|b| b != 0)
   }
   fn f32(&mut self) -> io::Result<f32> {
-    self.read_f32::<LittleEndian>()
+    let bytes = self.read_bytes_tolerant(4)?;
+    if bytes.len() < 4 {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("Expected 4 bytes for f32 but got {} bytes", bytes.len()),
+      ));
+    }
+    Ok(LittleEndian::read_f32(&bytes))
   }
   fn f64(&mut self) -> io::Result<f64> {
-    self.read_f64::<LittleEndian>()
+    let bytes = self.read_bytes_tolerant(8)?;
+    if bytes.len() < 8 {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("Expected 8 bytes for f64 but got {} bytes", bytes.len()),
+      ));
+    }
+    Ok(LittleEndian::read_f64(&bytes))
   }
 
   /// Read exactly n bytes
@@ -47,8 +117,40 @@ pub trait ReadExt: Read + Seek {
     if count == 0 {
       return Ok(Vec::new());
     }
+    // Use tolerant reading to handle EOF gracefully
+    self.read_bytes_tolerant(count)
+  }
+
+  /// Read up to n bytes, returning whatever is available (like .NET BinaryReader.ReadBytes)
+  /// This method handles partial reads gracefully and doesn't fail on EOF
+  fn read_bytes_available(&mut self, count: usize) -> io::Result<Vec<u8>> {
+    if count == 0 {
+      return Ok(Vec::new());
+    }
     let mut buf = vec![0u8; count];
-    self.read_exact(&mut buf)?;
+    let bytes_read = self.read(&mut buf)?;
+    buf.truncate(bytes_read);
+    Ok(buf)
+  }
+
+  /// Read exactly n bytes, but handle EOF gracefully by returning available bytes
+  fn read_bytes_tolerant(&mut self, count: usize) -> io::Result<Vec<u8>> {
+    if count == 0 {
+      return Ok(Vec::new());
+    }
+    let mut buf = vec![0u8; count];
+    let mut total_read = 0;
+    
+    while total_read < count {
+      match self.read(&mut buf[total_read..]) {
+        Ok(0) => break, // EOF reached
+        Ok(n) => total_read += n,
+        Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
+        Err(e) => return Err(e),
+      }
+    }
+    
+    buf.truncate(total_read);
     Ok(buf)
   }
 
@@ -56,7 +158,14 @@ pub trait ReadExt: Read + Seek {
   fn guid(&mut self) -> io::Result<Uuid> {
     let mut data = [0u32; 4];
     for i in 0..4 {
-      data[i] = self.read_u32::<byteorder::BigEndian>()?;
+      let bytes = self.read_bytes_tolerant(4)?;
+      if bytes.len() < 4 {
+        return Err(io::Error::new(
+          io::ErrorKind::UnexpectedEof,
+          format!("Expected 4 bytes for GUID segment {} but got {} bytes", i, bytes.len()),
+        ));
+      }
+      data[i] = byteorder::BigEndian::read_u32(&bytes);
     }
     let mut guid_bytes = [0u8; 16];
     for i in 0..4 {
@@ -92,8 +201,13 @@ pub trait ReadExt: Read + Seek {
       ));
     }
 
-    let mut buf = vec![0u8; len as usize];
-    self.read_exact(&mut buf)?;
+    let buf = self.read_bytes_tolerant(len as usize)?;
+    if buf.len() < len as usize {
+      return Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("Expected {} bytes for string but got {} bytes", len, buf.len()),
+      ));
+    }
 
     // Use the length field directly to determine string length
     // This handles both null-terminated and non-null-terminated strings

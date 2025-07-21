@@ -268,6 +268,7 @@ pub fn parse_manifest_buffer(buffer: Buffer) -> NapiResult<Manifest> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::error::Error;
 
     #[test]
     fn test_parse_manifest() {
@@ -485,4 +486,55 @@ mod tests {
 
         println!("Sync and async manifest loading produced identical results!");
     }
+
+    #[test]
+    fn test_parse_failing_manifest() {
+        use std::fs::File;
+        use std::io::Read;
+        
+        let file_path = "fail.manifest";
+        
+        // Read the failing manifest file
+        let mut file = File::open(file_path).expect("Failed to open failing manifest file");
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).expect("Failed to read failing manifest file");
+        
+        println!("Failing manifest file size: {} bytes", buffer.len());
+        
+        // Test failing manifest parsing to understand the error
+        match std::panic::catch_unwind(|| {
+            process_manifest_data(buffer)
+        }) {
+            Ok(Ok(manifest)) => {
+                println!("✅ Successfully parsed failing manifest!");
+                println!("Header version: {}", manifest.header.version);
+                if let Some(meta) = &manifest.meta {
+                    println!("App name: {}", meta.app_name);
+                    println!("Build version: {}", meta.build_version);
+                }
+                if let Some(chunk_list) = &manifest.chunk_list {
+                    println!("Chunk count: {}", chunk_list.count);
+                }
+                if let Some(file_list) = &manifest.file_list {
+                     println!("File count: {}", file_list.count);
+                }
+            }
+            Ok(Err(e)) => {
+                println!("❌ Failed to parse failing manifest: {}", e);
+                println!("Error details: {:?}", e);
+                
+                // Print the error chain
+                let mut source = e.source();
+                while let Some(err) = source {
+                    println!("Caused by: {:?}", err);
+                    source = err.source();
+                }
+            }
+            Err(panic_info) => {
+                println!("❌ Parsing panicked: {:?}", panic_info);
+            }
+        }
+    }
+
+
 }

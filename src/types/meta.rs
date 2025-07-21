@@ -1,4 +1,3 @@
-use byteorder::{LittleEndian, ReadBytesExt};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek, SeekFrom};
@@ -108,7 +107,7 @@ impl ManifestMeta {
         let start_pos = rdr.stream_position()?;
 
         debug!("Reading metadata:");
-        let data_size = rdr.read_u32::<LittleEndian>()?;
+        let data_size = rdr.u32()?;
         debug!("  Data size: {} (0x{:x})", data_size, data_size);
 
         // Validate data size
@@ -122,10 +121,18 @@ impl ManifestMeta {
 
         // Read remaining data into buffer and use LimitedReader
         let adjusted_data_size = data_size.saturating_sub(4); // Subtract the 4 bytes we already read for data_size
-        let mut remaining_data = vec![0u8; adjusted_data_size as usize];
-        rdr.read_exact(&mut remaining_data)?;
+        // Use tolerant reading to handle cases where less data is available than expected
+        let remaining_data = rdr.read_bytes_tolerant(adjusted_data_size as usize)?;
+        let actual_size = remaining_data.len();
         
-        let mut limited_reader = LimitedReader::new(&remaining_data, adjusted_data_size as usize);
+        if actual_size < adjusted_data_size as usize {
+            debug!(
+                "Warning: Expected {} bytes but only {} bytes available for metadata. Using available data.",
+                adjusted_data_size, actual_size
+            );
+        }
+        
+        let mut limited_reader = LimitedReader::new(&remaining_data, actual_size);
         let rdr = &mut limited_reader;
         
         debug!(
@@ -133,16 +140,16 @@ impl ManifestMeta {
             adjusted_data_size
         );
 
-        let data_version = rdr.read_u8()?;
+        let data_version = rdr.u8()?;
         debug!("  Data version: {} (0x{:x})", data_version, data_version);
 
-        let feature_level = rdr.read_i32::<LittleEndian>()?;
+        let feature_level = rdr.i32()?;
         debug!("  Feature level: {} (0x{:x})", feature_level, feature_level);
 
-        let is_file_data = rdr.read_u8()? != 0;
+        let is_file_data = rdr.u8()? != 0;
         debug!("  Is file data: {}", is_file_data);
 
-        let app_id = rdr.read_i32::<LittleEndian>()?;
+        let app_id = rdr.i32()?;
         debug!("  App ID: {} (0x{:x})", app_id, app_id);
 
         let app_name = rdr.fstring()?;

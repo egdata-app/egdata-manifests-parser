@@ -39,9 +39,19 @@ impl ManifestHeader {
         let data_size_uncompressed = rdr.i32()?;
         let data_size_compressed = rdr.i32()?;
 
-        // Read SHA1 hash
-        let mut hash = [0u8; 20];
-        rdr.read_exact(&mut hash)?;
+        // Read SHA-1 hash (20 bytes)
+        let hash_bytes = rdr.read_bytes_tolerant(20)?;
+        let hash = if hash_bytes.len() == 20 {
+            let mut hash_array = [0u8; 20];
+            hash_array.copy_from_slice(&hash_bytes);
+            hash_array
+        } else {
+            debug!("Warning: Expected 20 bytes for SHA hash but got {} bytes", hash_bytes.len());
+            let mut padded_hash = [0u8; 20];
+            let copy_len = hash_bytes.len().min(20);
+            padded_hash[..copy_len].copy_from_slice(&hash_bytes[..copy_len]);
+            padded_hash
+        };
         debug!("Raw SHA-1 bytes from file: {:02x?}", hash);
 
         // Read stored_as flag

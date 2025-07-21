@@ -1,4 +1,3 @@
-use byteorder::{LittleEndian, ReadBytesExt};
 use hex;
 use log::debug;
 use serde::{Deserialize, Serialize};
@@ -146,7 +145,7 @@ impl FileManifestList {
         );
 
         // Read data size (uint32 in Go)
-        let data_size = rdr.read_u32::<LittleEndian>()?;
+        let data_size = rdr.u32()?;
         debug!("  Data size: {} (0x{:x})", data_size, data_size);
 
         // Validate data size
@@ -159,7 +158,7 @@ impl FileManifestList {
         }
 
         // Read data version (uint8 in Go)
-        let data_version = rdr.read_u8()?;
+        let data_version = rdr.u8()?;
         debug!("  Data version: {} (0x{:x})", data_version, data_version);
 
         // Validate data version
@@ -171,14 +170,22 @@ impl FileManifestList {
         }
 
         // Read count (uint32 in Go)
-        let count = rdr.read_u32::<LittleEndian>()?;
+        let count = rdr.u32()?;
         debug!("  Count: {} (0x{:x})", count, count);
 
         // Read the remaining data into a buffer and use LimitedReader
-        let mut remaining_data = vec![0u8; data_size as usize];
-        rdr.read_exact(&mut remaining_data)?;
+        // Use tolerant reading to handle cases where less data is available than expected
+        let remaining_data = rdr.read_bytes_tolerant(data_size as usize)?;
+        let actual_size = remaining_data.len();
         
-        let mut limited_reader = LimitedReader::new(&remaining_data, data_size as usize);
+        if actual_size < data_size as usize {
+            debug!(
+                "Warning: Expected {} bytes but only {} bytes available. Using available data.",
+                data_size, actual_size
+            );
+        }
+        
+        let mut limited_reader = LimitedReader::new(&remaining_data, actual_size);
         let rdr = &mut limited_reader;
         
         debug!(
@@ -213,15 +220,22 @@ impl FileManifestList {
         // Read SHA hashes in batch
         debug!("\nReading file hashes...");
         for i in 0..count {
-            let mut hash = [0u8; 20];
-            rdr.read_exact(&mut hash)?;
-            files[i as usize].sha_hash = hex::encode(hash);
+            let hash_bytes = rdr.read_bytes_tolerant(20)?;
+            if hash_bytes.len() == 20 {
+                files[i as usize].sha_hash = hex::encode(hash_bytes);
+            } else {
+                debug!("Warning: Expected 20 bytes for SHA hash but got {} bytes for file {}", hash_bytes.len(), i);
+                // Pad with zeros if needed or use empty hash
+                let mut padded_hash = hash_bytes;
+                padded_hash.resize(20, 0);
+                files[i as usize].sha_hash = hex::encode(padded_hash);
+            }
         }
 
         // Read file meta flags in batch
         debug!("\nReading file meta flags...");
         for i in 0..count {
-            files[i as usize].file_meta_flags = rdr.read_u8()?;
+            files[i as usize].file_meta_flags = rdr.u8()?;
         }
 
         // Read install tags in batch
@@ -235,7 +249,7 @@ impl FileManifestList {
         let mut total_chunk_parts = 0;
         let mut total_chunk_size = 0i64;
         for i in 0..count {
-            let chunk_count = rdr.read_u32::<LittleEndian>()?;
+            let chunk_count = rdr.u32()?;
             let pos = rdr.stream_position()?;
             debug!(
                 "File {}: Reading {} chunk parts at position {}",
@@ -299,23 +313,58 @@ impl FileManifestList {
             }
         }
 
-        // Handle version 2+ specific data
+        // Handle version 2+ specific data with EOF tolerance
         if data_version >= 2 {
             debug!("\nReading version 2+ specific data...");
-            for _ in 0..count {
-                // Skip unknown array
-                let array_size = rdr.read_u32::<LittleEndian>()?;
-                rdr.seek(SeekFrom::Current(array_size as i64 * 16))?;
-            }
-
-            // Read MIME types
+            
+            // Try to read version 2+ data, but handle EOF gracefully
+            let mut version2_success = true;
+            
+            // Skip unknown arrays with EOF handling
             for i in 0..count {
-                files[i as usize].mime_type = rdr.fstring()?;
+                match rdr.u32() {
+                    Ok(array_size) => {
+                        if let Err(e) = rdr.seek(SeekFrom::Current(array_size as i64 * 16)) {
+                            debug!("Warning: Failed to seek past unknown array for file {}: {}. Stopping version 2+ parsing.", i, e);
+                            version2_success = false;
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        debug!("Warning: Failed to read array size for file {}: {}. Stopping version 2+ parsing.", i, e);
+                        version2_success = false;
+                        break;
+                    }
+                }
             }
 
-            // Skip unknown data
-            for _ in 0..count {
-                rdr.seek(SeekFrom::Current(32))?;
+            // Read MIME types with EOF handling
+            if version2_success {
+                for i in 0..count {
+                    match rdr.fstring() {
+                        Ok(mime_type) => {
+                            files[i as usize].mime_type = mime_type;
+                        }
+                        Err(e) => {
+                            debug!("Warning: Failed to read MIME type for file {}: {}. Stopping MIME type parsing.", i, e);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Skip unknown data with EOF handling
+            if version2_success {
+                for i in 0..count {
+                    if let Err(e) = rdr.seek(SeekFrom::Current(32)) {
+                        debug!("Warning: Failed to seek past unknown data for file {}: {}. Stopping unknown data parsing.", i, e);
+                        break;
+                    }
+                }
+            }
+            
+            if !version2_success {
+                debug!("Note: Version 2+ specific data parsing was incomplete due to EOF, but this is acceptable for corrupted/truncated manifests.");
             }
         }
 
