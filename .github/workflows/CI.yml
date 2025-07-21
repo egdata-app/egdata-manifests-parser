@@ -215,7 +215,7 @@ jobs:
         run: ls -R .
         shell: bash
       - name: Test bindings
-        run: pnpm test:run
+        run: npm run test:run
         env:
           VITE_CJS_IGNORE_WARNING: true
   test-linux-binding:
