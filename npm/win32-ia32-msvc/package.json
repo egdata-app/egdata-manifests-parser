@@ -1,6 +1,6 @@
 {
   "name": "@egdata/manifests-parser-win32-ia32-msvc",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "cpu": [
     "ia32"
   ],
