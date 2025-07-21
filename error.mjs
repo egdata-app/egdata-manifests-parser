@@ -25,23 +25,11 @@ for (const file of manifestFiles) {
         }
 
         if (manifest.chunkList) {
-            console.log(`   Chunks: ${manifest.chunkList.elements ? manifest.chunkList.elements.length : manifest.chunk_list.count || 'N/A'}`);
-        } else {
-            console.log(`   Chunks: <empty>`)
+            console.log(`   Chunks: ${manifest.chunkList.elements ? manifest.chunkList.elements.length : manifest.chunkList.count || 'N/A'}`);
         }
-
+        
         if (manifest.fileList) {
             console.log(`   Files: ${manifest.fileList.fileManifestList ? manifest.fileList.fileManifestList.length : manifest.fileList.count || 'N/A'}`);
-        } else {
-            console.log(`   Files: <empty>`)
-        }
-
-        // Debug: show the actual structure for the first file
-        if (file === manifestFiles[0]) {
-            console.log(`   Debug structure:`, Object.keys(manifest));
-            if (manifest.meta) console.log(`   Meta keys:`, Object.keys(manifest.meta));
-            if (manifest.chunkList) console.log(`   Chunk list keys:`, Object.keys(manifest.chunkList));
-            if (manifest.fileList) console.log(`   File list keys:`, Object.keys(manifest.fileList));
         }
     } catch (error) {
         console.log(`❌ FAILED: ${error.message}`);
