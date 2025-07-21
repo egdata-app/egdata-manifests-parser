@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync } from 'fs';
 import { join } from 'path';
-import { parseManifestAsync, parseManifestSync } from '../index.js';
+import { parseManifestAsync } from '../index.js';
 
 describe('Comprehensive Manifest Testing', () => {
     const testManifestsDir = join(__dirname, '..', 'test-manifests');
