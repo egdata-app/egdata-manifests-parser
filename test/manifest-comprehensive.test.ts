@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync } from 'fs';
 import { join } from 'path';
-import { Manifest, parseManifestSync } from '../index.js';
+import { parseManifestAsync, parseManifestSync } from '../index.js';
 
 describe('Comprehensive Manifest Testing', () => {
     const testManifestsDir = join(__dirname, '..', 'test-manifests');
@@ -19,8 +19,8 @@ describe('Comprehensive Manifest Testing', () => {
             describe(`Testing: ${file}`, () => {
                 const filePath = join(testManifestsDir, file);
 
-                it('should parse successfully', () => {
-                    let manifest = parseManifestSync(filePath);
+                it('should parse successfully', async () => {
+                    let manifest = await parseManifestAsync(filePath);
 
                     expect(manifest).toBeDefined();
 
@@ -48,8 +48,8 @@ describe('Comprehensive Manifest Testing', () => {
                     }
                 });
 
-                it('should have valid structure', () => {
-                    const manifest = parseManifestSync(filePath);
+                it('should have valid structure', async () => {
+                    const manifest = await parseManifestAsync(filePath);
 
                     // Basic structure validation
                     expect(manifest.header).toBeDefined();
@@ -85,8 +85,8 @@ describe('Comprehensive Manifest Testing', () => {
 
                 // Specific tests based on file type
                 if (file.includes('corrupted')) {
-                    it('should handle corrupted data gracefully', () => {
-                        const manifest = parseManifestSync(filePath);
+                    it('should handle corrupted data gracefully', async () => {
+                        const manifest = await parseManifestAsync(filePath);
 
                         // Should still parse basic structure even if corrupted
                         expect(manifest.header).toBeDefined();
@@ -97,8 +97,8 @@ describe('Comprehensive Manifest Testing', () => {
                 }
 
                 if (file.includes('truncated')) {
-                    it('should handle truncated data with EOF tolerance', () => {
-                        const manifest = parseManifestSync(filePath);
+                    it('should handle truncated data with EOF tolerance', async () => {
+                        const manifest = await parseManifestAsync(filePath);
 
                         // Should parse successfully with our EOF tolerance fix
                         expect(manifest.header).toBeDefined();
@@ -109,8 +109,8 @@ describe('Comprehensive Manifest Testing', () => {
                 }
 
                 if (file.includes('json')) {
-                    it('should handle JSON format manifests', () => {
-                        const manifest = parseManifestSync(filePath);
+                    it('should handle JSON format manifests', async () => {
+                        const manifest = await parseManifestAsync(filePath);
 
                         // JSON manifests should have all standard fields
                         expect(manifest.header).toBeDefined();
@@ -126,8 +126,8 @@ describe('Comprehensive Manifest Testing', () => {
                 }
 
                 if (file.includes('small')) {
-                    it('should handle small manifests efficiently', () => {
-                        const manifest = parseManifestSync(filePath);
+                    it('should handle small manifests efficiently', async () => {
+                        const manifest = await parseManifestAsync(filePath);
 
                         // Small manifests should have reasonable counts
                         expect(manifest.chunkList?.count).toBeLessThan(1000);
@@ -139,20 +139,20 @@ describe('Comprehensive Manifest Testing', () => {
     });
 
     describe('Error Handling', () => {
-        it('should handle non-existent files gracefully', () => {
+        it('should handle non-existent files gracefully', async () => {
             // The function might return undefined or throw an error for non-existent file
             try {
-                const result = parseManifestSync('/non/existent/file.manifest');
+                const result = await parseManifestAsync('/non/existent/file.manifest');
                 expect(result).toBeUndefined();
             } catch (error) {
                 expect(error).toBeDefined();
             }
         });
 
-        it('should handle invalid file formats gracefully', () => {
+        it('should handle invalid file formats gracefully', async () => {
             // The function might return undefined or throw an error for invalid file
             try {
-                const result = parseManifestSync(__filename); // This TypeScript file
+                const result = await parseManifestAsync(__filename); // This TypeScript file
                 expect(result).toBeUndefined();
             } catch (error) {
                 expect(error).toBeDefined();
@@ -161,13 +161,13 @@ describe('Comprehensive Manifest Testing', () => {
     });
 
     describe('Performance', () => {
-        it('should parse manifests within reasonable time', () => {
+        it('should parse manifests within reasonable time', async () => {
             const startTime = Date.now();
 
-            manifestFiles.forEach(file => {
+            await Promise.all(manifestFiles.map(file => {
                 const filePath = join(testManifestsDir, file);
-                parseManifestSync(filePath);
-            });
+                return parseManifestAsync(filePath);
+            }));
 
             const endTime = Date.now();
             const totalTime = endTime - startTime;
