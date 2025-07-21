@@ -344,7 +344,7 @@ mod tests {
         use std::fs::File;
         use std::io::Read;
         
-        let file_path = "manifest.manifest";
+        let file_path = "test-manifests/valid-small.manifest";
         
         // Read the file
         let mut file = File::open(file_path).expect("Failed to open file");
@@ -381,7 +381,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_manifest_async() {
-        let manifest_path = PathBuf::from("manifest.manifest");
+        let manifest_path = PathBuf::from("test-manifests/valid-small.manifest");
         let manifest = load_async(&manifest_path)
             .await
             .expect("Failed to load manifest");
@@ -408,7 +408,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sync_vs_async_manifest_loading() {
-        let manifest_path = PathBuf::from("manifest.manifest");
+        let manifest_path = PathBuf::from("test-manifests/valid-small.manifest");
 
         // Load manifest using both methods
         let sync_manifest = load(&manifest_path).expect("Failed to load manifest synchronously");
@@ -492,7 +492,7 @@ mod tests {
         use std::fs::File;
         use std::io::Read;
         
-        let file_path = "fail.manifest";
+        let file_path = "test-manifests/corrupted-large.manifest";
         
         // Read the failing manifest file
         let mut file = File::open(file_path).expect("Failed to open failing manifest file");
@@ -534,6 +534,94 @@ mod tests {
                 println!("❌ Parsing panicked: {:?}", panic_info);
             }
         }
+    }
+
+    #[test]
+    fn test_all_manifest_files() {
+        use std::fs;
+        use std::path::Path;
+        
+        let test_dir = "test-manifests";
+        
+        if !Path::new(test_dir).exists() {
+            println!("⚠️  Test manifests directory not found, skipping comprehensive test");
+            return;
+        }
+        
+        let entries = fs::read_dir(test_dir).expect("Failed to read test-manifests directory");
+        let mut manifest_files: Vec<_> = entries
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let path = entry.path();
+                if path.extension()? == "manifest" {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        manifest_files.sort();
+        
+        println!("\n=== Testing {} manifest files ===", manifest_files.len());
+        
+        let mut results = Vec::new();
+        
+        for manifest_path in &manifest_files {
+            let file_name = manifest_path.file_name().unwrap().to_string_lossy();
+            println!("\n--- Testing: {} ---", file_name);
+            
+            match load(manifest_path) {
+                Ok(manifest) => {
+                    println!("✅ SUCCESS: Parsed successfully");
+                    
+                    if let Some(meta) = &manifest.meta {
+                        println!("   App Name: {}", meta.app_name);
+                        println!("   Build Version: {}", meta.build_version);
+                    }
+                    
+                    if let Some(chunk_list) = &manifest.chunk_list {
+                        println!("   Chunks: {}", chunk_list.count);
+                    }
+                    
+                    if let Some(file_list) = &manifest.file_list {
+                        println!("   Files: {}", file_list.count);
+                    }
+                    
+                    results.push((file_name.to_string(), true, None));
+                }
+                Err(e) => {
+                    println!("❌ FAILED: {}", e);
+                    
+                    // Print error chain
+                    let mut source = e.source();
+                    while let Some(err) = source {
+                        println!("   Caused by: {}", err);
+                        source = err.source();
+                    }
+                    
+                    results.push((file_name.to_string(), false, Some(e.to_string())));
+                }
+            }
+        }
+        
+        // Summary
+        println!("\n=== Test Summary ===");
+        let successful = results.iter().filter(|(_, success, _)| *success).count();
+        let failed = results.len() - successful;
+        
+        println!("Total: {} | Success: {} | Failed: {}", results.len(), successful, failed);
+        
+        for (name, success, error) in &results {
+            if *success {
+                println!("✅ {}", name);
+            } else {
+                println!("❌ {} - {}", name, error.as_ref().unwrap_or(&"Unknown error".to_string()));
+            }
+        }
+        
+        // We expect at least some manifests to parse successfully
+        assert!(successful > 0, "At least one manifest should parse successfully");
     }
 
 
