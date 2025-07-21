@@ -9,6 +9,67 @@ use crate::error::ManifestError;
 use crate::parser::reader::ReadExt;
 use crate::types::chunk::{ChunkDataList, ChunkPart};
 
+/// A wrapper that limits reading to a specific range of data
+struct LimitedReader<'a> {
+    data: &'a [u8],
+    position: usize,
+    limit: usize,
+}
+
+impl<'a> LimitedReader<'a> {
+    fn new(data: &'a [u8], limit: usize) -> Self {
+        Self {
+            data,
+            position: 0,
+            limit: limit.min(data.len()),
+        }
+    }
+}
+
+impl<'a> Read for LimitedReader<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.position >= self.limit {
+            return Ok(0); // EOF
+        }
+        
+        let available = self.limit - self.position;
+        let to_read = buf.len().min(available);
+        
+        if to_read == 0 {
+            return Ok(0);
+        }
+        
+        buf[..to_read].copy_from_slice(&self.data[self.position..self.position + to_read]);
+        self.position += to_read;
+        Ok(to_read)
+    }
+}
+
+impl<'a> Seek for LimitedReader<'a> {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        let new_pos = match pos {
+            SeekFrom::Start(offset) => offset as usize,
+            SeekFrom::End(offset) => {
+                if offset >= 0 {
+                    self.limit + offset as usize
+                } else {
+                    self.limit.saturating_sub((-offset) as usize)
+                }
+            }
+            SeekFrom::Current(offset) => {
+                if offset >= 0 {
+                    self.position + offset as usize
+                } else {
+                    self.position.saturating_sub((-offset) as usize)
+                }
+            }
+        };
+        
+        self.position = new_pos.min(self.limit);
+        Ok(self.position as u64)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[napi(object)]
 pub struct FileManifest {
@@ -113,13 +174,23 @@ impl FileManifestList {
         let count = rdr.read_u32::<LittleEndian>()?;
         debug!("  Count: {} (0x{:x})", count, count);
 
+        // Read the remaining data into a buffer and use LimitedReader
+        let mut remaining_data = vec![0u8; data_size as usize];
+        rdr.read_exact(&mut remaining_data)?;
+        
+        let mut limited_reader = LimitedReader::new(&remaining_data, data_size as usize);
+        let rdr = &mut limited_reader;
+        
+        debug!(
+            "FileManifestList: using limited reader with {} bytes",
+            data_size
+        );
+
         // Validate count
         if count > 1_000_000 {
-            // Reasonable max file count
-            return Err(ManifestError::Invalid(format!(
-                "Invalid count: {} (0x{:x}). Must be less than 1,000,000",
-                count, count
-            )));
+            return Err(ManifestError::Invalid(
+                "File count exceeds reasonable limit".to_string(),
+            ));
         }
 
         // Initialize file list with capacity
@@ -171,10 +242,8 @@ impl FileManifestList {
                 i, chunk_count, pos
             );
 
-            // Validate chunk count - use a more reasonable limit based on remaining data
-            let remaining_bytes = data_size as u64 - (pos - start_pos);
-            let max_possible_chunks = remaining_bytes / 32; // Each chunk part is ~32 bytes
-            if chunk_count > max_possible_chunks as u32 {
+            // Validate chunk count - use a reasonable limit
+            if chunk_count > 10_000 {
                 debug!(
                     "   Warning: Invalid chunk count ({}) for file {} at position {}, skipping.",
                     chunk_count, i, pos
@@ -255,16 +324,7 @@ impl FileManifestList {
             total_chunk_parts, total_chunk_size
         );
 
-        let end_pos = rdr.stream_position()?;
-        let bytes_read = end_pos - start_pos;
-
-        // Validate we read the expected amount of data
-        if bytes_read != data_size as u64 {
-            debug!(
-                "Warning: Read {} bytes but expected {} bytes",
-                bytes_read, data_size
-            );
-        }
+        debug!("FileManifestList parsing completed successfully");
 
         Ok(Self {
             data_size,

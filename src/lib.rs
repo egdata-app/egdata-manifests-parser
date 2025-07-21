@@ -5,6 +5,7 @@ pub mod types {
     pub mod header;
     pub mod manifest;
     pub mod meta;
+    pub mod json_manifest;
 }
 
 pub mod parser {
@@ -27,6 +28,7 @@ use std::{
 };
 
 use error::ManifestError;
+use types::json_manifest::{JsonManifest, is_json_manifest};
 
 use hex;
 use log::{debug, error, info, warn};
@@ -49,6 +51,18 @@ pub async fn load_async(path: impl AsRef<Path>) -> Result<Manifest, ManifestErro
 
 /// Process manifest data from a buffer
 fn process_manifest_data(buf: Vec<u8>) -> Result<Manifest, ManifestError> {
+    // Check if this is a JSON manifest first
+    if is_json_manifest(&buf) {
+        info!("Detected JSON manifest format");
+        let json_str = std::str::from_utf8(&buf)
+            .map_err(|e| ManifestError::Invalid(format!("Invalid UTF-8 in JSON manifest: {}", e)))?;
+        
+        let json_manifest = JsonManifest::from_str(json_str)?;
+        return json_manifest.to_manifest();
+    }
+
+    // Otherwise, process as binary manifest
+    info!("Processing as binary manifest format");
     let mut rdr = Cursor::new(&buf);
     let header = ManifestHeader::read(&mut rdr)?;
 
@@ -99,8 +113,17 @@ fn process_manifest_data(buf: Vec<u8>) -> Result<Manifest, ManifestError> {
 
         if offset < payload_compressed.len() - 2 {
             debug!("  Decompressing from offset {}", offset);
-            decompress_to_vec_zlib(&payload_compressed[offset..])
-                .map_err(|e| ManifestError::Inflate(format!("decompression failed: {}", e)))?
+            let decompression_result = decompress_to_vec_zlib(&payload_compressed[offset..]);
+            match decompression_result {
+                Ok(decompressed) => {
+                    debug!("  Decompression successful, got {} bytes", decompressed.len());
+                    decompressed
+                }
+                Err(e) => {
+                    error!("  Decompression failed: {}", e);
+                    return Err(ManifestError::Inflate(format!("decompression failed: {}", e)));
+                }
+            }
         } else {
             debug!("  No zlib header found in compressed data");
             payload_compressed.to_vec()
@@ -268,6 +291,90 @@ mod tests {
 
         if let Some(file_list) = &manifest.file_list {
             println!("Number of files: {}", file_list.count);
+        }
+    }
+
+    #[test]
+    fn test_parse_json_manifest() {
+        use std::fs::File;
+        use std::io::Read;
+        
+        let file_path = "json.manifest";
+        
+        // Read the JSON manifest file
+        let mut file = File::open(file_path).expect("Failed to open JSON manifest file");
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).expect("Failed to read JSON manifest file");
+        
+        println!("JSON manifest file size: {} bytes", buffer.len());
+        
+        // Test JSON manifest parsing
+        match process_manifest_data(buffer) {
+            Ok(manifest) => {
+                println!("✅ Successfully parsed JSON manifest!");
+                println!("Header version: {}", manifest.header.version);
+                if let Some(meta) = &manifest.meta {
+                    println!("App name: {}", meta.app_name);
+                    println!("Build version: {}", meta.build_version);
+                    println!("Launch exe: {}", meta.launch_exe);
+                }
+                if let Some(chunk_list) = &manifest.chunk_list {
+                    println!("Chunk count: {}", chunk_list.count);
+                }
+                if let Some(file_list) = &manifest.file_list {
+                     println!("File count: {}", file_list.count);
+                     if !file_list.file_manifest_list.is_empty() {
+                         println!("First file: {}", file_list.file_manifest_list[0].filename);
+                     }
+                 }
+                // Verify that we have successfully parsed all components
+                assert!(manifest.meta.is_some(), "Metadata should be parsed");
+                assert!(manifest.chunk_list.is_some(), "Chunk list should be parsed");
+                assert!(manifest.file_list.is_some(), "File list should be parsed");
+            }
+            Err(e) => {
+                panic!("JSON manifest parsing should succeed, but got error: {}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_manifest_with_limited_reader_protection() {
+        use std::fs::File;
+        use std::io::Read;
+        
+        let file_path = "manifest.manifest";
+        
+        // Read the file
+        let mut file = File::open(file_path).expect("Failed to open file");
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).expect("Failed to read file");
+        
+        println!("File size: {} bytes", buffer.len());
+        
+        // Test that the LimitedReader approach successfully prevents EOF errors
+        // and allows proper parsing of manifest files
+        match process_manifest_data(buffer) {
+            Ok(manifest) => {
+                println!("✅ Successfully parsed manifest with LimitedReader protection!");
+                println!("Header version: {}", manifest.header.version);
+                if let Some(meta) = &manifest.meta {
+                    println!("Meta data size: {}", meta.data_size);
+                }
+                if let Some(chunk_list) = &manifest.chunk_list {
+                    println!("Chunk count: {}", chunk_list.count);
+                }
+                if let Some(file_list) = &manifest.file_list {
+                    println!("File count: {}", file_list.count);
+                }
+                // Verify that we have successfully parsed all components
+                assert!(manifest.meta.is_some(), "Metadata should be parsed");
+                assert!(manifest.chunk_list.is_some(), "Chunk list should be parsed");
+                assert!(manifest.file_list.is_some(), "File list should be parsed");
+            }
+            Err(e) => {
+                panic!("Manifest parsing should succeed with LimitedReader protection, but got error: {}", e);
+            }
         }
     }
 

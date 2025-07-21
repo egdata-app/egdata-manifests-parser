@@ -7,7 +7,9 @@ import { parseManifestSync, parseManifestAsync, parseManifestBuffer } from '../i
 
 describe('NAPI Manifest Parser', () => {
     const manifestPath = join(__dirname, '..', 'manifest.manifest');
+    const jsonManifestPath = join(__dirname, '..', 'json.manifest');
     let manifestBuffer: Buffer;
+    let jsonManifestBuffer: Buffer;
 
     beforeAll(() => {
         // Check if manifest file exists
@@ -15,8 +17,14 @@ describe('NAPI Manifest Parser', () => {
             throw new Error(`Manifest file not found at ${manifestPath}`);
         }
 
-        // Read the manifest file as buffer
+        // Check if JSON manifest file exists
+        if (!existsSync(jsonManifestPath)) {
+            throw new Error(`JSON manifest file not found at ${jsonManifestPath}`);
+        }
+
+        // Read the manifest files as buffers
         manifestBuffer = readFileSync(manifestPath);
+        jsonManifestBuffer = readFileSync(jsonManifestPath);
     });
 
     describe('parseManifestSync', () => {
@@ -231,6 +239,89 @@ describe('NAPI Manifest Parser', () => {
 
             const result = parseManifestBuffer(manifestBuffer);
             expect(result).toBeDefined();
+        });
+    });
+
+    describe('JSON Manifest Parsing', () => {
+        it('should parse JSON manifest file synchronously', () => {
+            const result = parseManifestSync(jsonManifestPath);
+
+            expect(result).toBeDefined();
+            expect(result.header).toBeDefined();
+            expect(result.meta).toBeDefined();
+            expect(result.chunkList).toBeDefined();
+            expect(result.fileList).toBeDefined();
+        });
+
+        it('should parse JSON manifest file asynchronously', async () => {
+            const result = await parseManifestAsync(jsonManifestPath);
+
+            expect(result).toBeDefined();
+            expect(result.header).toBeDefined();
+            expect(result.meta).toBeDefined();
+            expect(result.chunkList).toBeDefined();
+            expect(result.fileList).toBeDefined();
+        });
+
+        it('should parse JSON manifest from buffer', () => {
+            const result = parseManifestBuffer(jsonManifestBuffer);
+
+            expect(result).toBeDefined();
+            expect(result.header).toBeDefined();
+            expect(result.meta).toBeDefined();
+            expect(result.chunkList).toBeDefined();
+            expect(result.fileList).toBeDefined();
+        });
+
+        it('should have valid JSON manifest meta structure', () => {
+            const result = parseManifestSync(jsonManifestPath);
+            const { meta } = result;
+
+            expect(meta?.appName).toBeTypeOf('string');
+            expect(meta?.buildVersion).toBeTypeOf('string');
+            expect(meta?.launchExe).toBeTypeOf('string');
+            expect(meta?.appName).toBe('32dbb6444ce14e9198129b746c0d056f');
+            expect(meta?.buildVersion).toBe('1.4.30.0');
+            expect(meta?.launchExe).toBe('TheFalconeer.exe');
+        });
+
+        it('should have valid JSON manifest file list', () => {
+            const result = parseManifestSync(jsonManifestPath);
+            const { fileList } = result;
+
+            expect(Array.isArray(fileList?.fileManifestList)).toBe(true);
+            expect(fileList?.fileManifestList.length).toBeGreaterThan(0);
+
+            if (fileList && fileList?.fileManifestList.length > 0) {
+                const file = fileList?.fileManifestList[0];
+                expect(file.filename).toBeTypeOf('string');
+                expect(file.filename).toBe('MonoBleedingEdge/EmbedRuntime/mono-2.0-bdwgc.dll');
+                expect(file.fileSize).toBeTypeOf('number');
+                expect(file.fileSize).toBe(101003264); // Updated to actual file size
+                expect(Array.isArray(file.chunkParts)).toBe(true);
+            }
+        });
+
+        it('should have consistent results across all JSON parsing methods', async () => {
+            const syncResult = parseManifestSync(jsonManifestPath);
+            const asyncResult = await parseManifestAsync(jsonManifestPath);
+            const bufferResult = parseManifestBuffer(jsonManifestBuffer);
+
+            // Compare key fields instead of exact object equality
+            expect(syncResult.meta?.appName).toBe(asyncResult.meta?.appName);
+            expect(syncResult.meta?.buildVersion).toBe(asyncResult.meta?.buildVersion);
+            expect(syncResult.meta?.launchExe).toBe(asyncResult.meta?.launchExe);
+            expect(syncResult.fileList?.fileManifestList.length).toBe(asyncResult.fileList?.fileManifestList.length);
+
+            expect(syncResult.meta?.appName).toBe(bufferResult.meta?.appName);
+            expect(syncResult.meta?.buildVersion).toBe(bufferResult.meta?.buildVersion);
+            expect(syncResult.meta?.launchExe).toBe(bufferResult.meta?.launchExe);
+            expect(syncResult.fileList?.fileManifestList.length).toBe(bufferResult.fileList?.fileManifestList.length);
+
+            expect(asyncResult.meta?.appName).toBe(bufferResult.meta?.appName);
+            expect(asyncResult.meta?.buildVersion).toBe(bufferResult.meta?.buildVersion);
+            expect(asyncResult.meta?.launchExe).toBe(bufferResult.meta?.launchExe);
+            expect(asyncResult.fileList?.fileManifestList.length).toBe(bufferResult.fileList?.fileManifestList.length);
         });
     });
 

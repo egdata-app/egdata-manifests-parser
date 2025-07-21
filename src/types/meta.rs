@@ -1,11 +1,73 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use log::debug;
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, SeekFrom};
 use napi_derive::napi;
 
 use crate::error::ManifestError;
 use crate::parser::reader::ReadExt;
+
+/// A wrapper that limits reading to a specific range of data
+struct LimitedReader<'a> {
+    data: &'a [u8],
+    position: usize,
+    limit: usize,
+}
+
+impl<'a> LimitedReader<'a> {
+    fn new(data: &'a [u8], limit: usize) -> Self {
+        Self {
+            data,
+            position: 0,
+            limit: std::cmp::min(limit, data.len()),
+        }
+    }
+}
+
+impl<'a> Read for LimitedReader<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let available = self.limit.saturating_sub(self.position);
+        if available == 0 {
+            return Ok(0);
+        }
+        
+        let to_read = std::cmp::min(buf.len(), available);
+        let end_pos = self.position + to_read;
+        
+        if end_pos <= self.data.len() {
+            buf[..to_read].copy_from_slice(&self.data[self.position..end_pos]);
+            self.position = end_pos;
+            Ok(to_read)
+        } else {
+            Ok(0)
+        }
+    }
+}
+
+impl<'a> Seek for LimitedReader<'a> {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        let new_pos = match pos {
+            SeekFrom::Start(offset) => offset as usize,
+            SeekFrom::End(offset) => {
+                if offset >= 0 {
+                    self.limit + offset as usize
+                } else {
+                    self.limit.saturating_sub((-offset) as usize)
+                }
+            }
+            SeekFrom::Current(offset) => {
+                if offset >= 0 {
+                    self.position + offset as usize
+                } else {
+                    self.position.saturating_sub((-offset) as usize)
+                }
+            }
+        };
+        
+        self.position = std::cmp::min(new_pos, self.limit);
+        Ok(self.position as u64)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[napi(object)]
@@ -57,6 +119,19 @@ impl ManifestMeta {
                 data_size, data_size
             )));
         }
+
+        // Read remaining data into buffer and use LimitedReader
+        let adjusted_data_size = data_size.saturating_sub(4); // Subtract the 4 bytes we already read for data_size
+        let mut remaining_data = vec![0u8; adjusted_data_size as usize];
+        rdr.read_exact(&mut remaining_data)?;
+        
+        let mut limited_reader = LimitedReader::new(&remaining_data, adjusted_data_size as usize);
+        let rdr = &mut limited_reader;
+        
+        debug!(
+            "ManifestMeta: using limited reader with {} bytes",
+            adjusted_data_size
+        );
 
         let data_version = rdr.read_u8()?;
         debug!("  Data version: {} (0x{:x})", data_version, data_version);

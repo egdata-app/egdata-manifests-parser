@@ -2,7 +2,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use hex;
 use log::debug;
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, SeekFrom};
 use uuid::Uuid;
 use napi_derive::napi;
 
@@ -44,12 +44,74 @@ pub struct ChunkDataList {
     pub chunk_lookup: std::collections::HashMap<String, u32>,
 }
 
+/// A wrapper that limits reading to a specific range of data
+struct LimitedReader<'a> {
+    data: &'a [u8],
+    position: usize,
+    limit: usize,
+}
+
+impl<'a> LimitedReader<'a> {
+    fn new(data: &'a [u8], limit: usize) -> Self {
+        Self {
+            data,
+            position: 0,
+            limit: std::cmp::min(limit, data.len()),
+        }
+    }
+}
+
+impl<'a> Read for LimitedReader<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let available = self.limit.saturating_sub(self.position);
+        if available == 0 {
+            return Ok(0);
+        }
+        
+        let to_read = std::cmp::min(buf.len(), available);
+        let end_pos = self.position + to_read;
+        
+        if end_pos <= self.data.len() {
+            buf[..to_read].copy_from_slice(&self.data[self.position..end_pos]);
+            self.position = end_pos;
+            Ok(to_read)
+        } else {
+            Ok(0)
+        }
+    }
+}
+
+impl<'a> Seek for LimitedReader<'a> {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        let new_pos = match pos {
+            SeekFrom::Start(offset) => offset as usize,
+            SeekFrom::End(offset) => {
+                if offset >= 0 {
+                    self.limit + offset as usize
+                } else {
+                    self.limit.saturating_sub((-offset) as usize)
+                }
+            }
+            SeekFrom::Current(offset) => {
+                if offset >= 0 {
+                    self.position + offset as usize
+                } else {
+                    self.position.saturating_sub((-offset) as usize)
+                }
+            }
+        };
+        
+        self.position = std::cmp::min(new_pos, self.limit);
+        Ok(self.position as u64)
+    }
+}
+
 impl ChunkDataList {
     pub fn read<R: Read + Seek>(mut rdr: R) -> Result<Self, ManifestError> {
+        let start_pos = rdr.stream_position()?;
         debug!(
             "Reading chunk list at position: {} (0x{:x})",
-            rdr.stream_position()?,
-            rdr.stream_position()?
+            start_pos, start_pos
         );
 
         let data_size = rdr.read_u32::<LittleEndian>()?;
@@ -62,6 +124,19 @@ impl ChunkDataList {
                 data_size, data_size
             )));
         }
+
+        // Read remaining data into buffer and use LimitedReader
+        let adjusted_data_size = data_size.saturating_sub(4); // Subtract the 4 bytes we already read for data_size
+        let mut remaining_data = vec![0u8; adjusted_data_size as usize];
+        rdr.read_exact(&mut remaining_data)?;
+        
+        let mut limited_reader = LimitedReader::new(&remaining_data, adjusted_data_size as usize);
+        let rdr = &mut limited_reader;
+        
+        debug!(
+            "ChunkDataList: using limited reader with {} bytes",
+            adjusted_data_size
+        );
 
         let data_version = rdr.read_u8()?;
         debug!("  Data version: {} (0x{:x})", data_version, data_version);
@@ -153,11 +228,20 @@ impl ChunkPart {
         chunk_lookup: &std::collections::HashMap<String, u32>,
         chunks: &[Chunk],
     ) -> Result<Self, ManifestError> {
-        let data_size = rdr.read_u32::<LittleEndian>()?;
+        // Check if we have enough bytes to read a complete chunk part (28 bytes total)
+        let current_pos = rdr.stream_position()?;
+        
+        let data_size = rdr.read_u32::<LittleEndian>().map_err(|e| {
+            debug!("Failed to read data_size at position {}: {}", current_pos, e);
+            ManifestError::Io(e)
+        })?;
 
         // Read GUID
         let mut guid_bytes = [0u8; 16];
-        rdr.read_exact(&mut guid_bytes)?;
+        rdr.read_exact(&mut guid_bytes).map_err(|e| {
+            debug!("Failed to read GUID at position {}: {}", rdr.stream_position().unwrap_or(0), e);
+            ManifestError::Io(e)
+        })?;
         let parent_guid = Uuid::from_bytes(guid_bytes).to_string();
 
         // Validate parent GUID exists in chunk lookup
@@ -168,8 +252,15 @@ impl ChunkPart {
             )));
         }
 
-        let offset = rdr.read_u32::<LittleEndian>()?;
-        let size = rdr.read_u32::<LittleEndian>()?;
+        let offset = rdr.read_u32::<LittleEndian>().map_err(|e| {
+            debug!("Failed to read offset at position {}: {}", rdr.stream_position().unwrap_or(0), e);
+            ManifestError::Io(e)
+        })?;
+        
+        let size = rdr.read_u32::<LittleEndian>().map_err(|e| {
+            debug!("Failed to read size at position {}: {}", rdr.stream_position().unwrap_or(0), e);
+            ManifestError::Io(e)
+        })?;
 
         // Get reference to parent chunk
         let chunk_idx = chunk_lookup[&parent_guid];
