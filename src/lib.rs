@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_parse_manifest() {
-        let manifest_path = PathBuf::from("manifest.manifest");
+        let manifest_path = PathBuf::from("test-manifests/valid-small.manifest");
         let manifest = load(&manifest_path).expect("Failed to load manifest");
 
         // Basic validation
@@ -300,7 +300,7 @@ mod tests {
         use std::fs::File;
         use std::io::Read;
         
-        let file_path = "json.manifest";
+        let file_path = "test-manifests/valid-json-format.manifest";
         
         // Read the JSON manifest file
         let mut file = File::open(file_path).expect("Failed to open JSON manifest file");
