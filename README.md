@@ -17,7 +17,7 @@ A high-performance parser for Epic Games manifest files, available as both a Rus
 ### Node.js Package
 
 ```bash
-npm install egdata-manifests-parser
+npm install @egdata/manifests-parser
 ```
 
 ### Rust Library
@@ -36,19 +36,19 @@ egdata-manifests-parser = "0.1.1"
 #### Synchronous Example
 
 ```javascript
-const { parseManifestSync } = require('egdata-manifests-parser');
+import { parseManifestSync } from '@egdata/manifests-parser';
 
 try {
     const manifest = parseManifestSync('path/to/manifest.manifest');
     
     console.log('Manifest version:', manifest.header.version);
     if (manifest.meta) {
-        console.log('App name:', manifest.meta.app_name);
-        console.log('Build version:', manifest.meta.build_version);
+        console.log('App name:', manifest.meta.appName);
+        console.log('Build version:', manifest.meta.buildVersion);
     }
     
-    console.log('Files count:', manifest.file_list?.count || 0);
-    console.log('Chunks count:', manifest.chunk_list?.count || 0);
+    console.log('Files count:', manifest.fileList?.count || 0);
+    console.log('Chunks count:', manifest.chunkList?.count || 0);
 } catch (error) {
     console.error('Error parsing manifest:', error.message);
 }
@@ -57,7 +57,7 @@ try {
 #### Asynchronous Example
 
 ```javascript
-const { parseManifestAsync } = require('egdata-manifests-parser');
+import { parseManifestAsync } from '@egdata/manifests-parser';
 
 async function parseManifest() {
     try {
@@ -65,8 +65,8 @@ async function parseManifest() {
         
         console.log('Manifest version:', manifest.header.version);
         if (manifest.meta) {
-            console.log('App name:', manifest.meta.app_name);
-            console.log('Build version:', manifest.meta.build_version);
+            console.log('App name:', manifest.meta.appName);
+            console.log('Build version:', manifest.meta.buildVersion);
         }
     } catch (error) {
         console.error('Error parsing manifest:', error.message);
@@ -79,10 +79,10 @@ parseManifest();
 #### Parse from Buffer
 
 ```javascript
-const { parseManifestBuffer } = require('egdata-manifests-parser');
-const fs = require('fs');
+import { parseManifestBuffer } from '@egdata/manifests-parser';
+import { readFileSync } from 'fs';
 
-const buffer = fs.readFileSync('path/to/manifest.manifest');
+const buffer = readFileSync('path/to/manifest.manifest');
 const manifest = parseManifestBuffer(buffer);
 ```
 
@@ -140,43 +140,101 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 interface Manifest {
     header: ManifestHeader;
     meta?: ManifestMeta;
-    chunk_list?: ChunkDataList;
-    file_list?: FileManifestList;
+    chunkList?: ChunkDataList;
+    fileList?: FileManifestList;
 }
 ```
 
 #### ManifestHeader
 ```typescript
 interface ManifestHeader {
-    header_size: number;
-    data_size_uncompressed: number;
-    data_size_compressed: number;
-    sha1_hash: string;
-    stored_as: number;
+    headerSize: number;
+    dataSizeUncompressed: number;
+    dataSizeCompressed: number;
+    sha1Hash: string;
+    storedAs: number;
     version: number;
     guid: string;
-    rolling_hash: number;
-    hash_type: number;
+    rollingHash: number;
+    hashType: number;
 }
 ```
 
 #### ManifestMeta
 ```typescript
 interface ManifestMeta {
-    data_size: number;
-    data_version: number;
-    feature_level: number;
-    is_file_data: boolean;
-    app_id: number;
-    app_name: string;
-    build_version: string;
-    launch_exe: string;
-    launch_command: string;
-    prereq_ids: string[];
-    prereq_name: string;
-    prereq_path: string;
-    prereq_args: string;
-    build_id?: string;
+    dataSize: number;
+    dataVersion: number;
+    featureLevel: number;
+    isFileData: boolean;
+    appId: number;
+    appName: string;
+    buildVersion: string;
+    launchExe: string;
+    launchCommand: string;
+    prereqIds: string[];
+    prereqName: string;
+    prereqPath: string;
+    prereqArgs: string;
+    buildId?: string;
+}
+```
+
+#### ChunkDataList
+```typescript
+interface ChunkDataList {
+    dataSize: number;
+    dataVersion: number;
+    count: number;
+    elements: Array<Chunk>;
+    chunkLookup: Record<string, number>;
+}
+```
+
+#### FileManifestList
+```typescript
+interface FileManifestList {
+    dataSize: number;
+    dataVersion: number;
+    count: number;
+    fileManifestList: Array<FileManifest>;
+}
+```
+
+#### Chunk
+```typescript
+interface Chunk {
+    guid: string;
+    hash: string;
+    shaHash: string;
+    group: number;
+    windowSize: number;
+    fileSize: string;
+}
+```
+
+#### FileManifest
+```typescript
+interface FileManifest {
+    filename: string;
+    symlinkTarget: string;
+    shaHash: string;
+    fileMetaFlags: number;
+    installTags: Array<string>;
+    chunkParts: Array<ChunkPart>;
+    fileSize: number;
+    mimeType: string;
+}
+```
+
+#### ChunkPart
+```typescript
+interface ChunkPart {
+    dataSize: number;
+    parentGuid: string;
+    offset: number;
+    size: number;
+    chunk?: Chunk;
 }
 ```
 

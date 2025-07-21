@@ -308,7 +308,7 @@ jobs:
       - name: Build
         run: |
           pnpm build
-          echo "type NapiResult<T> = T;" >> index.d.ts
+          pnpm postbuild
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
