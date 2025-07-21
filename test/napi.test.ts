@@ -6,8 +6,8 @@ import { join } from 'path';
 import { parseManifestSync, parseManifestAsync, parseManifestBuffer } from '../index.js';
 
 describe('NAPI Manifest Parser', () => {
-    const manifestPath = join(__dirname, '..', 'manifest.manifest');
-    const jsonManifestPath = join(__dirname, '..', 'json.manifest');
+    const manifestPath = join(__dirname, '..', 'test-manifests', 'valid-small.manifest');
+    const jsonManifestPath = join(__dirname, '..', 'test-manifests', 'valid-json-format.manifest');
     let manifestBuffer: Buffer;
     let jsonManifestBuffer: Buffer;
 
