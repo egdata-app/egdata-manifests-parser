@@ -31,6 +31,8 @@ describe('Comprehensive Manifest Testing', () => {
                     if (manifest && manifest.meta) {
                         console.log(`   App Name: ${manifest.meta.appName}`);
                         console.log(`   Build Version: ${manifest.meta.buildVersion}`);
+                        console.log(`   SHA1 Hash: ${manifest.header.sha1Hash}`);
+                        expect(manifest.header.sha1Hash).length.above(0);
                     }
 
                     if (manifest && manifest.chunkList) {

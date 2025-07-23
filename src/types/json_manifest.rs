@@ -75,7 +75,7 @@ impl JsonManifest {
             header_size: 0,
             data_size_uncompressed: 0,
             data_size_compressed: 0,
-            sha1_hash: String::new(),
+            sha1_hash: self.generate_manifest_sha1_hash()?,
             stored_as: 0,
             version: self.parse_version()? as i32,
             guid: String::new(),
@@ -118,10 +118,14 @@ impl JsonManifest {
         // Create chunks with standard size
         let mut chunks = std::collections::HashMap::new();
         for guid in unique_chunks {
+            // Generate hash from GUID for JSON manifests since hash data is not available
+            let hash = Self::generate_hash_from_guid(&guid);
+            let sha_hash = Self::generate_sha_hash_from_guid(&guid);
+            
             chunks.insert(guid.clone(), Chunk {
                 guid: guid.clone(),
-                hash: String::new(), // Not available in JSON format
-                sha_hash: String::new(), // Not available in JSON format
+                hash,
+                sha_hash,
                 group: 0,
                 window_size: STANDARD_CHUNK_SIZE as u32, // Standard uncompressed size
                 file_size: STANDARD_CHUNK_SIZE.to_string(), // Standard compressed size
@@ -228,6 +232,47 @@ impl JsonManifest {
                 .map_err(|e| ManifestError::Invalid(format!("Invalid hash byte '{}': {}", byte_str, e)))?;
         }
         Ok(hash)
+    }
+
+    /// Generate a hash from GUID for JSON manifests
+    fn generate_hash_from_guid(guid: &str) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        guid.hash(&mut hasher);
+        let hash_value = hasher.finish();
+        format!("{:016x}", hash_value)
+    }
+
+    /// Generate a SHA hash from GUID for JSON manifests
+    fn generate_sha_hash_from_guid(guid: &str) -> String {
+        use sha1::{Digest, Sha1};
+        
+        let mut hasher = Sha1::new();
+        hasher.update(guid.as_bytes());
+        let result = hasher.finalize();
+        hex::encode(result)
+    }
+
+    /// Generate a SHA1 hash for the manifest header
+    fn generate_manifest_sha1_hash(&self) -> Result<String, ManifestError> {
+        use sha1::{Digest, Sha1};
+        
+        let mut hasher = Sha1::new();
+        
+        // Hash key manifest properties to create a unique identifier
+        hasher.update(self.manifest_file_version.as_bytes());
+        hasher.update(self.app_id.as_bytes());
+        hasher.update(self.app_name_string.as_bytes());
+        hasher.update(self.build_version_string.as_bytes());
+        hasher.update(self.launch_exe_string.as_bytes());
+        
+        // Include file count for uniqueness
+        hasher.update(self.file_manifest_list.len().to_string().as_bytes());
+        
+        let result = hasher.finalize();
+        Ok(hex::encode(result))
     }
 }
 
