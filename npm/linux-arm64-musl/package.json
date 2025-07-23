@@ -1,6 +1,6 @@
 {
   "name": "@egdata/manifests-parser-linux-arm64-musl",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "cpu": [
     "arm64"
   ],

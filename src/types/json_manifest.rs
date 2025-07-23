@@ -102,23 +102,30 @@ impl JsonManifest {
         };
 
         // Extract unique chunks from file chunk parts
-        let mut chunks = std::collections::HashMap::new();
+        // For JSON manifests, use a standard chunk size approach since the size values
+        // in the manifest represent file offsets/ranges, not actual chunk sizes
+        const STANDARD_CHUNK_SIZE: u64 = 1024 * 1024; // 1MB standard chunk size
+        let mut unique_chunks = std::collections::HashSet::<String>::new();
+        
         for file in &self.file_manifest_list {
             for chunk_part in &file.file_chunk_parts {
                 let guid = Uuid::from_str(&chunk_part.guid)
                     .map_err(|e| ManifestError::Invalid(format!("Invalid GUID: {}", e)))?;
-                
-                if !chunks.contains_key(&guid.to_string()) {
-                    chunks.insert(guid.to_string(), Chunk {
-                        guid: guid.to_string(),
-                        hash: String::new(), // Not available in JSON format
-                        sha_hash: String::new(), // Not available in JSON format
-                        group: 0,
-                        window_size: 0,
-                        file_size: self.parse_hex_string(&chunk_part.size)?.to_string(),
-                    });
-                }
+                unique_chunks.insert(guid.to_string());
             }
+        }
+        
+        // Create chunks with standard size
+        let mut chunks = std::collections::HashMap::new();
+        for guid in unique_chunks {
+            chunks.insert(guid.clone(), Chunk {
+                guid: guid.clone(),
+                hash: String::new(), // Not available in JSON format
+                sha_hash: String::new(), // Not available in JSON format
+                group: 0,
+                window_size: STANDARD_CHUNK_SIZE as u32, // Standard uncompressed size
+                file_size: STANDARD_CHUNK_SIZE.to_string(), // Standard compressed size
+            });
         }
 
         let chunk_lookup = chunks.iter().enumerate()
@@ -199,9 +206,9 @@ impl JsonManifest {
     }
 
     fn parse_hex_string(&self, hex_str: &str) -> Result<i64, ManifestError> {
-        // Parse as u64 first, then convert to i64
-        let value = u64::from_str_radix(hex_str, 16)
-            .map_err(|e| ManifestError::Invalid(format!("Invalid hex string '{}': {}", hex_str, e)))?;
+        // Parse as decimal (despite the method name, these are actually decimal values in JSON manifests)
+        let value = hex_str.parse::<u64>()
+            .map_err(|e| ManifestError::Invalid(format!("Invalid number string '{}': {}", hex_str, e)))?;
         
         Ok(value as i64)
     }

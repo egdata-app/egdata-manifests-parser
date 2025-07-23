@@ -297,7 +297,7 @@ describe('NAPI Manifest Parser', () => {
                 expect(file.filename).toBeTypeOf('string');
                 expect(file.filename).toBe('MonoBleedingEdge/EmbedRuntime/mono-2.0-bdwgc.dll');
                 expect(file.fileSize).toBeTypeOf('number');
-                expect(file.fileSize).toBe(101003264); // Updated to actual file size
+                expect(file.fileSize).toBe(206059000); // Updated to actual file size with decimal parsing fix
                 expect(Array.isArray(file.chunkParts)).toBe(true);
             }
         });

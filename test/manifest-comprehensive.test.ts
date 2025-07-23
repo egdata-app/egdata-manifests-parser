@@ -46,6 +46,26 @@ describe('Comprehensive Manifest Testing', () => {
                             manifest.fileList.count || 0;
                         console.log(`   Files: ${fileCount}`);
                     }
+
+                    // Calculate download size by summing all chunk file sizes (compressed size)
+                    const downloadSizeBytes =
+                        manifest.chunkList?.elements.reduce((sum, chunk) => {
+                            return sum + Number.parseInt(chunk.fileSize);
+                        }, 0) || 0;
+
+                    // Calculate installed size by summing window sizes of all chunks (uncompressed size)
+                    const installedSizeBytes =
+                        manifest.chunkList?.elements.reduce((sum, chunk) => {
+                            return sum + (chunk.windowSize ?? chunk.fileSize);
+                        }, 0) || 0;
+
+                    console.log(`Download size: ${downloadSizeBytes / 1024 / 1024 / 1024} GB`);
+                    console.log(`Installed size: ${installedSizeBytes / 1024 / 1024 / 1024} GB`);
+
+                    expect(downloadSizeBytes, "download size").toBeGreaterThan(0);
+                    expect(installedSizeBytes, "installed size").toBeGreaterThan(0);
+
+                    expect(downloadSizeBytes, "download size").toBeLessThanOrEqual(installedSizeBytes);
                 });
 
                 it('should have valid structure', async () => {
