@@ -182,36 +182,74 @@ pub trait ReadExt: Read + Seek {
     Ok(bytes)
   }
 
-  /// Unreal's FString (32-bit length, optionally null-terminated)
+  /// Unreal's FString (signed 32-bit length; negative = UTF-16 LE)
   fn fstring(&mut self) -> io::Result<String> {
-    let len = self.u32()?;
+    let len = self.i32()?;
     if len == 0 {
       return Ok(String::new());
     }
 
-    // Add reasonable size limit
-    const MAX_REASONABLE_STRING_LENGTH: u32 = 1024 * 1024 * 1024; // 1GB max string length
-    if len > MAX_REASONABLE_STRING_LENGTH {
-      return Err(io::Error::new(
-        io::ErrorKind::InvalidData,
-        format!(
-          "String length ({}) exceeds maximum allowed size of {} bytes",
-          len, MAX_REASONABLE_STRING_LENGTH
-        ),
-      ));
-    }
+    if len < 0 {
+      let chars_with_null = (-len) as usize;
+      let bytes_to_read = chars_with_null.checked_mul(2).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidData, "wide string length overflow")
+      })?;
 
-    let buf = self.read_bytes_tolerant(len as usize)?;
-    if buf.len() < len as usize {
-      return Err(io::Error::new(
-        io::ErrorKind::UnexpectedEof,
-        format!("Expected {} bytes for string but got {} bytes", len, buf.len()),
-      ));
-    }
+      const MAX_REASONABLE_STRING_LENGTH_BYTES: usize = 1024 * 1024 * 1024;
+      if bytes_to_read > MAX_REASONABLE_STRING_LENGTH_BYTES {
+        return Err(io::Error::new(
+          io::ErrorKind::InvalidData,
+          format!(
+            "String length ({}) exceeds maximum allowed size of {} bytes",
+            bytes_to_read, MAX_REASONABLE_STRING_LENGTH_BYTES
+          ),
+        ));
+      }
 
-    // Use the length field directly to determine string length
-    // This handles both null-terminated and non-null-terminated strings
-    Ok(String::from_utf8_lossy(&buf).to_string())
+      let buf = self.read_bytes_tolerant(bytes_to_read)?;
+      if buf.len() < bytes_to_read {
+        return Err(io::Error::new(
+          io::ErrorKind::UnexpectedEof,
+          format!("Expected {} bytes for string but got {} bytes", bytes_to_read, buf.len()),
+        ));
+      }
+
+      let mut utf16: Vec<u16> = Vec::with_capacity(chars_with_null);
+      let mut i = 0usize;
+      while i + 1 < buf.len() {
+        let v = LittleEndian::read_u16(&buf[i..i + 2]);
+        utf16.push(v);
+        i += 2;
+      }
+
+      let slice_len = utf16.len().saturating_sub(1);
+      let s = String::from_utf16_lossy(&utf16[..slice_len]);
+      return Ok(s);
+    } else {
+      let len_u = len as usize;
+      const MAX_REASONABLE_STRING_LENGTH_BYTES: usize = 1024 * 1024 * 1024;
+      if len_u > MAX_REASONABLE_STRING_LENGTH_BYTES {
+        return Err(io::Error::new(
+          io::ErrorKind::InvalidData,
+          format!(
+            "String length ({}) exceeds maximum allowed size of {} bytes",
+            len_u, MAX_REASONABLE_STRING_LENGTH_BYTES
+          ),
+        ));
+      }
+
+      let buf = self.read_bytes_tolerant(len_u)?;
+      if buf.len() < len_u {
+        return Err(io::Error::new(
+          io::ErrorKind::UnexpectedEof,
+          format!("Expected {} bytes for string but got {} bytes", len_u, buf.len()),
+        ));
+      }
+
+      let slice_len = if !buf.is_empty() && *buf.last().unwrap() == 0 { buf.len() - 1 } else { buf.len() };
+      let s = String::from_utf8_lossy(&buf[..slice_len]).to_string();
+      return Ok(s);
+    }
   }
 
   fn fstring_array(&mut self) -> io::Result<Vec<String>> {
