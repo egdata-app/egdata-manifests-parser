@@ -1,6 +1,6 @@
 {
   "name": "@egdata/manifests-parser-darwin-arm64",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "cpu": [
     "arm64"
   ],
